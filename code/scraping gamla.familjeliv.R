@@ -67,9 +67,10 @@ get_thread_links <- function(sub_link) {
 
 get_thread_pages <- function(thread_link) {
   library(rvest)
-  page <- read_html(thread_link)
+  page <- read_html(paste0("http://gamla.familjeliv.se", thread_link))
   pages <- html_nodes(page, "#formupdate .selected a") %>% 
     html_text()
+  
   return(as.numeric(pages[1]))
 }
 
@@ -84,7 +85,7 @@ build_links_for_threads <- function(thread_link, n_pages) {
   temp_link <- str_sub(thread_link, end=-6)
   links <- character(length = length(n))
   for (i in seq_along(n)) {
-    links[i] <- paste0(temp_link, "-", n[i], ".html")
+    links[i] <- paste0("http://gamla.familjeliv.se", temp_link, "-", n[i], ".html")
   }
   return(links)
 }
@@ -336,3 +337,19 @@ scrape_thread <- function(thread_link, n_pages) {
   return(remove_quotes(quotes = quotes, output_tbl = output_tbl))
 }
 
+### try_again
+
+try_again <- function(output_list, url_tbl) {
+  output_list_transp <- output_list %>% transpose()
+  success_tbl <- bind_rows(output_list_transp$result)
+  error <- output_list_transp$error %>% map_lgl(is_null)
+  failed_links <- url_tbl$thread_link[!error] %>%
+    enframe() %>%
+    left_join(url_tbl, by = c("value" = "thread_link")) %>% 
+    select(thread_link = value, n_pages)
+  
+  pb <- progress_estimated(length(failed_links$thread_link))
+  scrape_failed <- pmap(failed_links, safely(scrape_thread))
+  
+  return(list(success_tbl, scrape_failed))
+}
