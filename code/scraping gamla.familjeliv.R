@@ -276,7 +276,7 @@ remove_quotes <- function(quotes, output_tbl) {
   library(tidyverse)
   library(magrittr)
   
-  for (j in 1:length(quotes)) {
+  for (j in seq_along(quotes)) {
     quotes[j] <- str_sub(quotes[j], start=-(2/3*str_length(quotes[j])))
   }
   output_tbl %<>%
@@ -293,12 +293,15 @@ remove_quotes <- function(quotes, output_tbl) {
     filter(quote_bin == 0)
   pattern <- paste(quotes, collapse = '|')
   output_w_quote$content_wo_quote <- character(length = nrow(output_w_quote))
-  for (k in 1:nrow(output_w_quote)) {
-    output_w_quote$content_wo_quote[k] <- str_split(output_w_quote$content[k], 
-                                                    pattern = pattern, 
-                                                    n = 2)[[1]][[2]]
+  if (nrow(output_w_quote) != 0) {
+    for (k in seq_along(output_w_quote)) {
+      output_w_quote$content_wo_quote[k] <- str_split(output_w_quote$content[k], 
+                                                      pattern = pattern, 
+                                                      n = 2)[[1]][[2]]
+      output_w_quote$content_wo_quote %<>% str_squish()
+    }
   }
-  output_w_quote$content_wo_quote %<>% str_squish()
+  
   output_wo_quote$content_wo_quote <- output_wo_quote$content
   output_tbl <- bind_rows(output_w_quote, output_wo_quote) %>%
     distinct(content_wo_quote, .keep_all = TRUE) %>%
@@ -310,10 +313,7 @@ remove_quotes <- function(quotes, output_tbl) {
 
 scrape_thread <- function(thread_link, n_pages) {
   
-  library(rvest)
-  library(stringr)
-  library(tidyverse)
-  library(magrittr)
+  pb$tick()$print()
   
   url_list <- build_links_for_threads(thread_link = thread_link, n_pages = n_pages)
   
@@ -334,7 +334,24 @@ scrape_thread <- function(thread_link, n_pages) {
   output_tbl <- bind_rows(output_list)
   quotes <- quotes_list %>% unlist()
   
-  return(remove_quotes(quotes = quotes, output_tbl = output_tbl))
+  if (length(quotes) == 0) {
+    return(output_tbl)
+  } else {
+    return(remove_quotes(quotes = quotes, output_tbl = output_tbl))
+  }
+}
+
+### get failed links
+
+get_failed_links <- function(output_list, url_tbl) {
+  output_list_transp <- output_list %>% transpose()
+  success_tbl <- bind_rows(output_list_transp$result)
+  error <- output_list_transp$error %>% map_lgl(is_null)
+  failed_links <- url_tbl$thread_link[!error] %>%
+    enframe() %>%
+    left_join(url_tbl, by = c("value" = "thread_link")) %>% 
+    select(thread_link = value, n_pages)
+  return(failed_links)
 }
 
 ### try_again
