@@ -2,6 +2,12 @@
 ######### scraping gamla.familjeliv.se ######### 
 ################################################
 
+library(rvest)
+library(tidyverse)
+library(purrr)
+library(magrittr)
+library(lubridate)
+
 ###############################################
 ################# thread urls #################
 ###############################################
@@ -293,12 +299,11 @@ remove_quotes <- function(quotes, output_tbl) {
     filter(quote_bin == 0)
   pattern <- paste(quotes, collapse = '|')
   output_w_quote$content_wo_quote <- character(length = nrow(output_w_quote))
-  if (nrow(output_w_quote) != 0) {
-    for (k in seq_along(output_w_quote)) {
-      output_w_quote$content_wo_quote[k] <- str_split(output_w_quote$content[k], 
-                                                      pattern = pattern, 
-                                                      n = 2)[[1]][[2]]
-      output_w_quote$content_wo_quote %<>% str_squish()
+  for (i in 1:nrow(output_w_quote)) {
+    if (length(str_split(output_w_quote$content[i], pattern = pattern, n = 2)[[1]]) == 2) {
+      output_w_quote$content_wo_quote <- str_split(output_w_quote$content[i], pattern = pattern, n = 2)[[1]][[2]]
+    } else {
+      output_w_quote$content_wo_quote[i] <- paste0("flawed citation", output_w_quote$content[i])
     }
   }
   
@@ -323,6 +328,7 @@ scrape_thread <- function(thread_link, n_pages) {
   for (i in seq_along(url_list)) {
     thread_page <- read_html(url_list[[i]])
     output_list[[i]] <- tibble(
+      thread = thread_link,
       date = get_date(thread_page = thread_page, url = url_list[[i]]),
       time = get_time(thread_page = thread_page, url = url_list[[i]]),
       author = get_author(thread_page = thread_page, url = url_list[[i]]),
@@ -369,4 +375,53 @@ try_again <- function(output_list, url_tbl) {
   scrape_failed <- pmap(failed_links, safely(scrape_thread))
   
   return(list(success_tbl, scrape_failed))
+}
+
+### scrape thread for badly-behaved threads
+unify_vector_length <- function(date, time, author, content) {
+  list <- list(date, time, author, content)
+  max <- max(lengths(list))
+  for (i in seq_along(1:4)) {
+    length(list[[i]]) <- max
+  }
+  return(list)
+}
+
+scrape_bad_thread <- function(thread_link, n_pages) {
+  
+  pb$tick()$print()
+  
+  url_list <- build_links_for_threads(thread_link = thread_link, n_pages = n_pages)
+  
+  output_list <- list()
+  quotes_list <- list()
+  
+  for (i in seq_along(url_list)) {
+    thread_page <- read_html(url_list[[i]])
+    
+    date <- get_date(thread_page = thread_page, url = url_list[[i]])
+    time <- get_time(thread_page = thread_page, url = url_list[[i]])
+    author <- get_author(thread_page = thread_page, url = url_list[[i]])
+    content <- get_textual_content(thread_page = thread_page, url = url_list[[i]])
+    
+    uni_list <- unify_vector_length(date, time, author, content)
+    
+    output_list[[i]] <- tibble(
+      thread = thread_link,
+      date = uni_list[[1]],
+      time = uni_list[[2]],
+      author = uni_list[[3]],
+      content = uni_list[[4]]
+    )
+    quotes_list[[i]] <- get_quotes(thread_page = thread_page)
+  }
+  
+  output_tbl <- bind_rows(output_list)
+  quotes <- quotes_list %>% unlist()
+  
+  if (length(quotes) == 0) {
+    return(output_tbl)
+  } else {
+    return(remove_quotes(quotes = quotes, output_tbl = output_tbl))
+  }
 }
