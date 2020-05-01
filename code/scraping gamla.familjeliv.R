@@ -61,6 +61,7 @@ build_links_for_subs <- function(sub_link, n_pages) {
 
 get_thread_links <- function(sub_link) {
   library(rvest)
+  pb$tick()$print()
   page <- read_html(sub_link)
   links <- html_nodes(page, ".forumListing-thread a") %>%
     html_attr("href")
@@ -73,6 +74,7 @@ get_thread_links <- function(sub_link) {
 
 get_thread_pages <- function(thread_link) {
   library(rvest)
+  pb$tick()$print()
   page <- read_html(paste0("http://gamla.familjeliv.se", thread_link))
   pages <- html_nodes(page, "#formupdate .selected a") %>% 
     html_text()
@@ -271,8 +273,8 @@ get_quotes <- function (thread_page) {
 
 # (4.) bind it together
     
-output_tbl <- bind_rows(output_tbl, temp_tbl)
-quotes <- quotes_list %>% unlist()
+#output_tbl <- bind_rows(output_tbl, temp_tbl)
+#quotes <- quotes_list %>% unlist()
 
 # (5.) remove quotes
 
@@ -299,11 +301,13 @@ remove_quotes <- function(quotes, output_tbl) {
     filter(quote_bin == 0)
   pattern <- paste(quotes, collapse = '|')
   output_w_quote$content_wo_quote <- character(length = nrow(output_w_quote))
-  for (i in 1:nrow(output_w_quote)) {
-    if (length(str_split(output_w_quote$content[i], pattern = pattern, n = 2)[[1]]) == 2) {
-      output_w_quote$content_wo_quote <- str_split(output_w_quote$content[i], pattern = pattern, n = 2)[[1]][[2]]
-    } else {
-      output_w_quote$content_wo_quote[i] <- paste0("flawed citation", output_w_quote$content[i])
+  if (nrow(output_w_quote) > 0) {
+    for (i in 1:nrow(output_w_quote)) {
+      if (length(str_split(output_w_quote$content[i], pattern = pattern, n = 2)[[1]]) == 2) {
+        output_w_quote$content_wo_quote <- str_split(output_w_quote$content[i], pattern = pattern, n = 2)[[1]][[2]]
+      } else {
+        output_w_quote$content_wo_quote[i] <- paste0("flawed citation", output_w_quote$content[i])
+      }
     }
   }
   
@@ -313,6 +317,7 @@ remove_quotes <- function(quotes, output_tbl) {
     arrange(date, time)
   return(output_tbl)
 }
+
 
 ### final scrape function ###
 
@@ -339,6 +344,7 @@ scrape_thread <- function(thread_link, n_pages) {
   
   output_tbl <- bind_rows(output_list)
   quotes <- quotes_list %>% unlist()
+  quotes <- quotes[quotes != ""]
   
   if (length(quotes) == 0) {
     return(output_tbl)
